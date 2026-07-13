@@ -6,7 +6,7 @@
 
 // A couple of simple functions the tests will check.
 function add(a, b) {
-  return a + b;
+  return a - b;
 }
 
 function greet(name) {
