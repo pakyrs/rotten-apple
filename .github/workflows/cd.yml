@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CD — "deliver what passed"
+# Runs when a commit lands on main (i.e. after a PR merges).
+# build → deploy to STAGING → smoke test → APPROVAL GATE → promote to PROD.
+#
+# The "deploy" steps here are MOCK — they just print what a real deploy
+# would do. Everything else (artifact hand-off, job ordering, the manual
+# approval gate) is 100% real GitHub Actions behaviour.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # lets you trigger it manually too
+
+permissions:
+  contents: read
+
+jobs:
+  # ── JOB 1: build once ──────────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm run build
+
+      # Save dist/ as an artifact so the next jobs reuse the SAME build.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: ./dist
+
+  # ── JOB 2: deploy to staging (MOCK) ────────────────────────────────────────
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging          # links to the "staging" GitHub Environment
+    steps:
+      - name: Download the build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build
+          path: ./dist
+
+      # MOCK DEPLOY: in real life this would push to Azure. Here we just
+      # prove we received the exact build that job 1 produced.
+      - name: "Deploy to staging (mock)"
+        run: |
+          echo "=== Pretending to deploy to STAGING ==="
+          echo "Contents of the build we're shipping:"
+          ls -la ./dist
+          echo "Build info:"
+          cat ./dist/build-info.json
+
+      # MOCK SMOKE TEST: a real one would curl a health URL. We run the
+      # app's health() function to prove the build actually works.
+      - name: "Smoke test staging (mock)"
+        run: |
+          node -e "const {health} = require('./dist/app.js'); const h = health(); if (h.status !== 'ok') process.exit(1); console.log('Staging healthy:', JSON.stringify(h));"
+
+  # ── JOB 3: promote to production, behind the APPROVAL GATE ─────────────────
+  promote-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production       # add a "required reviewer" rule to THIS one
+    steps:
+      - name: Download the build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build
+          path: ./dist
+
+      # MOCK PROMOTE: real life = slot swap in Azure. Here we just announce it.
+      - name: "Promote to production (mock)"
+        run: |
+          echo "=== Approved! Promoting the SAME build to PRODUCTION ==="
+          cat ./dist/build-info.json
+          echo "Production is live 🎉 (pretend)"

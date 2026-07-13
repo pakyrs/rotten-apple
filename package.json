@@ -1,0 +1,11 @@
+{
+  "name": "learn-cicd",
+  "version": "1.0.0",
+  "description": "A tiny app for learning how a CI/CD pipeline works",
+  "scripts": {
+    "lint": "echo \"(pretend linting... no issues found)\" && exit 0",
+    "test": "node --test",
+    "build": "node scripts/build.js"
+  },
+  "license": "MIT"
+}
