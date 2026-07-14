@@ -1,0 +1,15 @@
+{
+  "name": "rotten-apple",
+  "version": "1.0.0",
+  "description": "Web app deployed to Azure App Service via GitHub Actions",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "lint": "echo \"(no linter configured yet)\" && exit 0",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "pg": "^8.11.0"
+  },
+  "license": "MIT"
+}

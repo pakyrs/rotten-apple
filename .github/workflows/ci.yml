@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI — "check every change"
+# Runs on every pull request into main. Installs deps, lints, tests.
+# Deploys NOTHING. If a step fails, the PR gets a red X and (with branch
+# protection on) the merge is blocked.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Real project now has a dependency (pg), so we install it.
+      # 'npm install' (not 'npm ci') because there's no package-lock.json
+      # committed yet — once you commit one, switch this to 'npm ci'.
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test

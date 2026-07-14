@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CD — "deliver what passed"
+# Runs when a commit lands on main (after a PR merges).
+# build → APPROVAL GATE → deploy to Azure App Service → smoke test.
+#
+# Auth to Azure uses OIDC federated credentials — no stored password.
+# Set these repo VARIABLES first (Settings > Secrets and variables > Actions):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+# And set the app name below to your App Service.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Change this to your App Service name.
+env:
+  AZURE_WEBAPP_NAME: my-appgw-web-12345
+
+permissions:
+  contents: read
+
+jobs:
+  # ── JOB 1: build the deployable package once ───────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install production dependencies so pg ships inside the artifact.
+      - name: Install production dependencies
+        run: npm install --omit=dev
+
+      # Package everything App Service needs to run the app.
+      - name: Create deployment package
+        run: |
+          mkdir -p dist
+          cp -r src package.json node_modules dist/
+          echo "{\"commit\":\"${GITHUB_SHA}\",\"builtAt\":\"$(date -u +%FT%TZ)\"}" > dist/build-info.json
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: ./dist
+
+  # ── JOB 2: deploy to Azure, behind the APPROVAL GATE ───────────────────────
+  deploy-production:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production        # required-reviewer rule lives on this environment
+    permissions:
+      id-token: write              # lets the runner request an OIDC token
+      contents: read
+    steps:
+      - name: Download the build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build
+          path: ./dist
+
+      # OIDC login — no password. Azure validates the short-lived token
+      # against the federated credential scoped to this repo + branch.
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Push the packaged app to the App Service you built.
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ./dist
+
+      # Smoke test: hit the LIVE /health endpoint. If it isn't 200, fail
+      # the deploy so we know immediately.
+      - name: Smoke test /health
+        run: |
+          echo "Waiting for the app to warm up..."
+          sleep 30
+          curl -f "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health"
